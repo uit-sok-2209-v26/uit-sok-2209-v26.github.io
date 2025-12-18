@@ -1,0 +1,386 @@
+---
+title: "Estimering - noen tips"
+subtitle: "Linear regresjon med kontinuerlige og kategoriske variabler"
+author: "Derek J. Clark"
+format:
+  html:
+    self-contained: true
+date: today
+language: norsk.yml
+bibliography: tillit.bib
+csl: apa.csl
+editor: visual
+execute:
+  warning: false
+  message: false
+---
+
+## Innledning
+
+Dette dokumentet går gjennom en enkel estimering av en lineær regresjon basert på oppdiktet data. Vi laster inn pakker og datafila.
+
+```{r}
+rm(list=ls())
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(car)
+})
+
+# pakken "car" brukes til å utføre en kollineæritetstest
+
+url <- "https://raw.githubusercontent.com/uit-sok-2209-v25/uit-sok-2209-v25.github.io/refs/heads/main/fiktiv_data.csv"
+
+data <- read.csv(url)
+
+```
+
+## Variabler
+
+Datasettet er oppdiktet og inneholder 2000 observasjoner av 5 variabler. Det er en avhengig variabel "avhengig_var" , og fire variabler som vi skal bruke som forklaring/kontroll:
+
+-   kjønn (mann, kvinne)
+
+-   utdanning (grunnskole, videregående, høyere)
+
+-   alder (heltall 18+)
+
+-   inntekt (i 1000 NOK).
+
+## Deskriptiv statistikk
+
+Nå må vi beskrive datasettet. Det er greit å vær obs på følgende: når du estimerer en lineær regresjon i R utelates i utgangspunktet observasjoner som ikke er fullstendig (hvor det er en NA i minst én kolonne).
+
+Vi får en del informasjon gjennom `summary()`
+
+```{r}
+data %>% 
+  summary()
+```
+
+Vi kan beregne standard avvik til de kontinuerlige variablene "avhengig_var" , "alder", "inntekt" . For eksempel for den avhengige variabelen:
+
+```{r}
+
+ 
+
+avhengig_var_sd <- sd(data$avhengig_var, na.rm = TRUE)   
+
+ 
+cat("avhengig_var - standard avvik:", avhengig_var_sd, "\n") 
+```
+
+"Kjønn" og "utdanning" er kategoriske variabler. La oss se på utdanning:
+
+```{r}
+
+data %>%
+  count(utdanning) %>%
+  mutate(persent = n / sum(n) * 100)
+
+```
+
+Vi kan visualisere dette på ulike måter.
+
+```{r}
+
+data %>% 
+  ggplot(aes(x = utdanning)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Fordeling av utdanningsnivå",
+       x = "Utdanningsnivå",
+       y = "Antall") +
+  theme_minimal()
+
+```
+
+```{r}
+
+data %>%
+  count(utdanning) %>%
+  mutate(andel = n / sum(n)) %>%
+  ggplot(aes(x = utdanning, y = andel, fill = utdanning)) +
+  geom_col() +
+  geom_text(aes(label = scales::percent(andel, accuracy = 0.1)), 
+            vjust = -0.5, size = 5) + 
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(title = "Fordeling av utdanngsnivå",
+       x = "Utdanningsnivå",
+       y = "Andel") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+data %>%
+  count(utdanning) %>%
+  mutate(andel = n / sum(n)) %>%
+  ggplot(aes(x = "", y = andel, fill = utdanning)) +
+  geom_col(width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = scales::percent(andel, accuracy = 0.1)), 
+            position = position_stack(vjust = 0.5)) +
+  labs(title = "Andel utdanningsnivå") +
+  theme_void()
+```
+
+## Ligningen
+
+Etter å ha gjennomført en teoretisk gjennomgang av problemstillingen og en grundig gjennomgang av tidligere forskning har jeg funnet frem til en ligning som jeg kan estimere med OLS:
+
+$$
+avhengig\_var = \alpha_0 + \alpha_1\:kjønn +\alpha_2\:alder +\alpha_3\:utdanning +\alpha_4\:inntekt + error \hspace{2cm}
+$$
+
+"Kjønn" er en dummyvariabel som jeg gir verdi 0 for kvinne og 1 for mann. Dette passer dersom jeg har en hypotese knyttet til å være en mann (at menn har en større effekt på den avhengige variabelen enn kvinner vil vises ved en signifikant $\alpha_1$).
+
+```{r}
+# Kjønnsdummy (1 for mann, 0 for kvinne)
+
+data <- data %>%
+  mutate(mann = if_else(kjønn == "mann", 1, 0))
+```
+
+"Utdanning" også en kategorisk variabel som består av 3 kategorier/nivå. Disse gjøres om til faktorer (`tidyverse` inneholder pakken `forcats` som hjelper oss her). Her har jeg observasjoner for utdanning som allerede har passende beskrivelser - dan kan jeg gjøre om disse kategorier til faktorer uten å spesifisere nivå (level):
+
+```{r}
+data <- data %>%
+  mutate(utdanning_fact = factor(utdanning))
+```
+
+Ved å gjøre dette vil R automatisk anta at faktoren som kommer først i alfabetet er referansen i en regresjon (som de andre sammenlignes mot).
+
+```{r}
+levels(data$utdanning_fact)
+```
+
+Vi kan endre referansekategori:
+
+```{r}
+data <- data %>%
+  mutate(utdanning_fact = fct_relevel(utdanning, "høyere"))
+```
+
+```{r}
+levels(data$utdanning_fact)
+```
+
+Slik at "høyere" er nå referansekategori. Igjen vil en fornuftig referansekategori avhenger av hypotesen som du vil teste.
+
+Tenk at ditt datasett inneholder tall som observasjon, for eksempel at de med grunnskole er gitt med 1, 2 er videregående og 3 er høyere utdanning. Følgende snutt gjør tallene om til faktorer med tilhørende beskrivelse, og til slutt med "høyere" som referansekategori. (Kommentert ut for å sikre at denne koden ikke kjøres ettersom dette passer ikke til datasett som vi har lastet inn, og vil gi en feil).
+
+```{r}
+
+
+#data <- data %>%
+#  mutate(utdanning_fact = factor(utdanning, 
+#                            levels = c(1, 2, 3),
+#                            labels = c("grunnskole", "videregående", "høyere")
+#                            ) %>%
+#  mutate(utdanning_fact = fct_relevel(utdanning_fact, "høyere"))
+```
+
+For mer om hvordan man kan bruke tidyverse for å behandle kategoriske variabler i R, se @mcnamara2018wrangling. Hadley Wickham har et kapittel om faktorer i sin bok [her](https://r4ds.hadley.nz/factors.html).
+
+## Estimering
+
+Her estimeres ligningen ved hjelp av lineær regresjon
+
+```{r}
+
+
+
+model_1 <- lm(avhengig_var ~ mann + alder + utdanning_fact + inntekt , data = data)
+
+
+summary(model_1)
+
+```
+
+Før vi tolker våre resultater bør vi se om de grunnleggende forutsetningene bak estimeringen er oppfylt. `plot()` kommandoen i base R hjelper oss litt på vei. Jeg tolker ikke resultatene i dette notatet.
+
+Vi kan plotte residualene mot predikert verdi for å se om det er noe mønster (det bør det ikke være!). Hjelp til tolkning av disse figurene kan dere få [her](https://library.virginia.edu/data/articles/diagnostic-plots). (Dersom du utelater `which =` får du alle plottene samtidig).
+
+```{r}
+plot(model_1, which = 1, main = "Model fit")
+
+```
+
+Her sjekkes om residualene er normalfordelt (som vi ønsker!):
+
+```{r}
+plot(model_1, which = 2, main = "Model fit")
+```
+
+Mer om [QQ plott](https://library.virginia.edu/data/articles/understanding-q-q-plots).
+
+Følgende figur sjekker om variansen til residualene er konstant (som vi ønsker!).
+
+```{r}
+plot(model_1, which = 3, main = "Model fit")
+```
+
+Til slutt en figur som viser om noen av observasjonene har mye effekt på vår regresjonsligning.
+
+```{r}
+plot(model_1, which = 5, main = "Model fit")
+```
+
+Man kan også sjekke om det er et lineært forhold mellom våre forklaringsvariabler ved å kjøre en [Variance Inflation Factor (VIF) test](https://no.wikipedia.org/wiki/Variansinflasjonsfaktor). Høye verdier av VIF (over 5) indikerer at to variabler har et lineært forhold.
+
+```{r}
+
+# VIF test for multicollineæritet
+# vif() er en del av car pakken
+
+vif(model_1)
+
+```
+
+VIF verdier rundt 1 indikerer at det ikke er lineær korrelasjon mellom våre forklaringsvariabler.
+
+Legg merke til hvor mye av variansen i den avhengige variabelen modellen forklarer; justert $R^2=0.1522$, som er ganske mye for tverrsnittsdata (og kommer av hvordan datasettet er generert). Du bør også se på hvor mange observasjoner som estimeringen er basert på. Har du ikke fullstendige observasjoner vil R utelate dem. Her har vi ingen utelatte observasjoner (fra regresjonsutskriften ser vi at vi har 1994 frihetsgrader; dette er antall observasjoner minus antall estimerte koeffisienter: 2000-6=1994).
+
+Det finnes pakker som gir en mer oversiktlig utskrift av regresjonsresultatene, som for eksempel [jtools](https://cran.r-project.org/web/packages/jtools/vignettes/summ.html).
+
+```{r}
+
+# install.packages("jtools")
+
+
+# pakken huxtable brukes for å lage en pen tabell
+# install.packages("huxtable")
+suppressPackageStartupMessages({
+  library(jtools)
+  library(huxtable)
+})
+
+
+
+model <- lm(avhengig_var ~ mann + alder + utdanning_fact + inntekt, data = data)
+
+export_summs(model, digits = 3)
+```
+
+Ved hjelp av `kableExtra` kan man lage en fin tabell
+
+```{r}
+
+#install.packages("kableExtra")
+suppressPackageStartupMessages({
+  library(kableExtra)
+  library(knitr)
+})
+
+summary_table <- summary(model)$coefficients  
+
+colnames(summary_table) <- c("Estimat", "Std. avvik", "t-verdi", "p-verdi")
+rownames(summary_table) <- c("Konstantledd", "Mann", "Alder", "Grunnskole", "Videregående", "Inntekt")
+
+
+kable(summary_table, digits = 3, caption = "Regresjonsresultater") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+Koeffisientene kan visualiseres (med konfidensintervall):
+
+```{r}
+plot_coefs(model, conf_level = 0.95)
+```
+
+Koeffisientene til alder og inntekt ser ut til å være for liten til å gi oss et bilde av konfidensintervallene.
+
+Vi kan visualisere effekten av én variabel på den som vi ønsker å forklare (med 95% konfidensintervall)
+
+```{r}
+effect_plot(model, pred = "inntekt", interval = TRUE)
+
+```
+
+## Tolkning
+
+La oss se på og tolke våre regresjonskoeffisienter. Vår referansegruppe består av kvinner med høyere utdanning. Du ser hva som er referansegruppa ved å kombinere dummyvariablene som vi har spesifisert som 0, samt referansekategorien hvor det er flere enn to. For å måle kjønn satte vi inn verdi 0 for kvinne og 1 for mann, utdanning har tre kategorier, og vi spesifiserte "høyere" som referanse.
+
+Vår estimerte ligning ser slik ut.
+
+$$
+avhengig\_var = 24.927 + 11.549\:mann +0.04\:alder -3.648\:grunnskole -1.679\: videregående +0.003\:inntekt 
+$$
+
+Legg merke til at følgende avsnitt henter ut koeffisientene automatisk (slik at disse oppdateres dersom du endrer noe med estimeringen). Vi kan gjøre det samme med p-verdiene også, men disse er ofte små verdier. Derfor lager vi en funksjon som skriver p \< 0.001 i så tilfellet.
+
+```{r}
+
+format_p <- function(p) {
+  if (p < 0.001) return("< 0.001")
+  else return(formatC(p, format = "f", digits = 3))
+}
+
+```
+
+Da viser konstantleddet gjennomsnittsverdien for avhengig_var for referansegruppa som `r round(coef(model)["(Intercept)"], 3)` (p`r format_p(summary(model)$coefficients["(Intercept)", 4])`).
+
+Koeffisienten på "mann" er `r round(coef(model)["mann"], 3)`, (p`r format_p(summary(model)$coefficients["mann", 4])` ). Dette viser at en mann har `r round(coef(model)["mann"], 3)` høyere verdi av den avhengige variabelen enn en kvinne i gjennomsnitt dersom man holder de andre faktorene konstante (dvs ingen andre referanseverdier endres). Alt annet likt øker den avhengige variabelen gjennomsnittlig med `r round(coef(model)["alder"], 3)` for hvert år eldre man blir (p=`r format_p(summary(model)$coefficients["alder", 4])`). En ekstra 1000 kr i inntekt slår ut med `r round(coef(model)["inntekt"], 3)` på den avhengige variabelen (p`r format_p(summary(model)$coefficients["inntekt", 4])`). Sammenlignet med "høyere" har de med grunnskole i gjennomsnitt `r round(coef(model)["utdanning_factgrunnskole"], 3)` lavere verdi av den avhengige variabelen (p`r format_p(summary(model)$coefficients["utdanning_factgrunnskole", 4])`), men de med videregående har `r round(coef(model)["utdanning_factvideregående"], 3)` lavere enn de med høyere utdanning (p=`r format_p(summary(model)$coefficients["utdanning_factvideregående", 4])`).
+
+Du bør gi en tolkning av p-verdiene her. Alle p-verdier her er under 0.05 slik at vi har statistisk signifikans på et akseptabelt nivå (minst 5%). p-verdien angir sannsynligheten for at den målte effekten oppstår ved en tilfeldighet.
+
+Legg merke til at vi sammenligner utdanning med referansekategorien "høyere". Hva om vi ville sammenligne de som har grunnskole med de som har videregående? Da kan man bruke pakken [marginal effects](https://marginaleffects.com/). (Noen ganger må man oppdatere pakken `data.table` også). Jeg måtte bruke ChatGPT for å beregne dette manuelt til slutt - det ser ut som om pakken ikke liker estimering med `lm` .
+
+```{r}
+# install.packages("marginaleffects")
+library(marginaleffects)
+```
+
+```{r}
+# Compute predicted values for grunnskole and videregående
+pred_values <- predictions(model, newdata = datagrid(utdanning_fact = c("grunnskole", "videregående")))
+
+print(pred_values)
+
+# Compute difference between grunnskole and videregående
+diff_grunn_vs_videre <- diff(pred_values$estimate)
+
+print(diff_grunn_vs_videre)
+
+
+```
+
+De med videregående utdanning har i gjennomsnitt en `r round(diff_grunn_vs_videre, 2)` høyere predikert avhengig variabel enn de med grunnskole.
+
+## Interaksjonseffekter
+
+En problemstilling kan kreve - basert på teori eller tidligere forskning - at vi utforsker om det er interaksjon mellom noen variabler. ([Stat Trek](https://stattrek.com/multiple-regression/interaction) har en enkel innføring). Tenk at noen har funnet ut tidligere at effekten som inntekt har på den avhengige variabelen i vårt datasett er forskjellige for menn og kvinner. Dett kan kapres ved en interaksjon, slik at vi mener at følgende ligning holder:
+
+$$
+avhengig\_var = \alpha_0 + \alpha_1\:mann +\alpha_2\:alder +\alpha_3\:utdanning +\alpha_4\:inntekt + \alpha_5\:mann*inntekt
+$$
+
+Effekten som inntekt har på den avhengige variabelen (dvs den deriverte) er nå $\alpha_4+\alpha_5*mann$. Husk at mann=1, slik at den deriverte for menn er $\alpha_4+\alpha_5$, mens det for kvinner (kvinne = 0) er $\alpha_4$. Dersom vårt estimat av $\alpha_5$ er signifikant forskjellig fra null, er helningen til regresjonslinjen forskjellig for menn og kvinner.
+
+Dette kan vi tegne fra datasettet som vi har laget:
+
+```{r}
+
+data %>% 
+  ggplot(aes(x = inntekt, y = avhengig_var, color = as.factor(mann))) +
+  geom_smooth(method = "lm", se = FALSE, aes(group = mann)) +  # Adds regression lines
+  scale_color_manual(values = c("0" = "blue", "1" = "red"), labels = c("Kvinne", "Mann")) +
+  labs(title = "Sammenheng mellom inntekt og avhengig variabel",
+       x = "Inntekt",
+       y = "Avhengig variabel",
+       color = "Kjønn") +
+  theme_minimal()
+
+
+```
+
+Fra dette ser det ut som om det er en forskjell i helningen til de to linjene, men vi må sjekke dette statistisk. Dette kan vi undersøke ved å estimere en ligning med denne interaksjonen. Referansegruppa her blir kvinner med høyere utdanning som i gjennomsnitt har nivå $\alpha_0$ på den avhengige variabelen. Dersom $\alpha_5$ er statistisk forskjellig fra 0 har vi identifisert forskjellige effekter av inntekt for menn sammenliknet med kvinner.
+
+```{r}
+model_interact_mann_inntekt <- lm(avhengig_var ~ mann * inntekt + alder + utdanning_fact, data = data)
+summary(model_interact_mann_inntekt)
+```
+
+Referansegruppa her er kvinner med høyere utdanning. Gjennomsnittlig verdi av den avhengige variabelen er `r round(coef(model_interact_mann_inntekt)["(Intercept)"], 4)`. Menn har en verdi som er som er `r round(coef(model_interact_mann_inntekt)["mann"], 4)` høyere (p`r format_p(summary(model_interact_mann_inntekt)$coefficients["mann", 4])` ). For å undersøke om helningen er forskjellig, må vi se på koeffisienten på interaksjonen `mann:inntekt` . Denne er `r round(coef(model_interact_mann_inntekt)["mann:inntekt"], 4)` og p=`r format_p(summary(model_interact_mann_inntekt)$coefficients["mann:inntekt", 4])` , statistisk signifikant på 5% nivået.
+
+Effekten som 1000 kr har på den avhengige variabelen er `r round(coef(model_interact_mann_inntekt)["inntekt"], 4)+ round(coef(model_interact_mann_inntekt)["mann:inntekt"], 4)` for menn og `r round(coef(model_interact_mann_inntekt)["inntekt"], 4)` for kvinner.

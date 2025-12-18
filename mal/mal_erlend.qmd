@@ -1,0 +1,30 @@
+---
+format:   
+    pdf:    
+      include-before-body:       
+        - title.tex     
+      include-in-header:        
+       text: |        
+        \usepackage{graphicx}        
+        \usepackage{fancyhdr}         
+        \usepackage{sectsty}        
+        \usepackage{titlesec}        
+        \usepackage{tocloft}        
+        \usepackage{setspace}         
+        \usepackage[style=apa]{biblatex}         
+        \addbibresource{references.bib}
+        \pagestyle{fancy}         
+        \fancyhf{}          
+        \addtokomafont{disposition}{\rmfamily}
+      keep-tex: true     
+      toc: true 
+      toc-title: "Innhold"    
+      toc-depth: 3     
+      number-sections: true   
+      number-depth: 3     
+      geometry: "left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"     
+      fontsize: 12pt     
+      colorlinks: true    
+      bibliography: tillit.bib     
+      bibliographystyle: apa.cls
+---

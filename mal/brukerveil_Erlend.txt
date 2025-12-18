@@ -1,0 +1,46 @@
+I r studio: Opprett et nytt quarto-prosjekt
+
+Tips: Lag mapper i selve prosjektmappen. NY mappe-> "Bilder", og legg png-filene i der. bilde_uit.png og logo_uit.png
+
+Trykk på: File -> new file -> quarto document -> pdf
+
+YAML: "Dette tror jeg dere har et opplegg for til en forelesning med tanke på bibliography, toc= true, osv osv. " 
+
+Men, i denne YAML må en title.tex-fil lastes opp. Denne lages på følgende måte:
+
+Trykk på: File -> new file -> text file
+
+Når denne lagres, skal det gis et navn. Pandoc begrenser hva du kan navngi denne filen, anbefaler at den lagres som "title.tex". Selv har jeg lagd en mappe i prosjektmappen kalt "template", (gjør dette), og lagret tex-filen der. Under ligger en mal der skriftstørrelse, linjeavstand osv er ferdig. Her kan man også skrive en Abstract/Sammendrag om det er ønskelig.  Når du har lastet denne ned, legger du den i "template"-mappen.
+
+Se fila title.tex.txt
+
+i YAML lastes denne opp slik:
+
+format:   
+        pdf:    
+              include-before-body:       
+                     - template/title.tex     
+              include-in-header:        
+                     text: |        
+                          \usepackage{graphicx}        
+                          \usepackage{fancyhdr}         
+                          \usepackage{sectsty}        
+                          \usepackage{titlesec}        
+                          \usepackage{tocloft}        
+                          \usepackage{setspace}         
+                          \usepackage[style=apa]{biblatex}         
+                          \addbibresource{references.bib}
+                          \pagestyle{fancy}         
+                          \fancyhf{}          
+                          \addtokomafont{disposition}{\rmfamily}
+               keep-tex: true     
+               toc: true 
+               toc-title: "Innhold"    
+               toc-depth: 3     
+               number-sections: true   
+               number-depth: 3     
+               geometry: "left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"     
+               fontsize: 12pt     
+               colorlinks: true    
+               bibliography: references.bib     
+               bibliographystyle: apa.cls
