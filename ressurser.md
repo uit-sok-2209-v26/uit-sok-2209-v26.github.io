@@ -3,7 +3,7 @@
 <!-- Gjør endringer under her -->
 
 #### Støtteressurser
-Grad Coach er en Youtube-kanal med mange nyttige instrukjsonsvideoer. 
+Grad Coach er en Youtube-kanal med mange nyttige instrukjsonsvideoer. Den retter seg imot Master og PhD-studenter. Dette fører til at nivået er noen høyere enn for en Bachelor-oppgave. Til tross for dette tror vi at dere kan ha mye nytte og støtte av å se filmene.
 
 * [Grad Coach: lenke til hovedside](https://www.youtube.com/@GradCoach).
     * [Grad Coach: Forskningsspørsmål](https://www.youtube.com/watch?v=42-d2HdbyS8&list=PLvcb33xNTVUnbRHREZ2RbaPK6dY4sGrwq&index=11)
