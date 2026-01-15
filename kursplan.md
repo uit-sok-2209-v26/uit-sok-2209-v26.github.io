@@ -7,7 +7,7 @@
 |Dato <img width=50/>| Sesjon <img width=50/>   | Tema <img width=300/>           | Ressurser <img width=150/>  |
 |--------|----------------|---------------------------|--------------------------------------|
 |08.01. | 1 | Hva er en bacheloroppgave? | [Retningslinjer](/Retningslinjer%20og%20krav%20til%20skriving%20av%20bacheloroppgave.pdf) <br> [Forelesningsnotater](/forelesning_1.html) <br> [En tidligere oppgave (2023)](/SOK-2209-Bacheloroppgave.pdf) <br> [En tidligere oppgave (2024)](/bacheloroppgave_24.pdf) |
-|15.01. | 2 | Forskningsverksted - Årets tema | [Variabellista](Variabellista.html) <br> [Datahåndteringsavtalen](Datahandteringsavtale_sign.pdf) <br> <!--[Forelesningsnotater](/forelesning_2v2_1323.html)--> |
+|15.01. | 2 | Forskningsverksted - Årets tema | [Variabellista](/Variabellista.html) <br> [Datahåndteringsavtalen](/Datahandteringsavtale_sign.pdf) <br> <!--[Forelesningsnotater](/forelesning_2v2_1323.html)--> |
 |22.01. | 3 | Presentasjon av problemstillingen | Studentpresentasjon   |
 |29.01. | 4 | Skriveverksted <br> 1. Quarto <br> 2. Struktur på oppgaven <br> 3. Mal for førstesiden (Erlend S. Øverli) <br> 4. Karakterbeskrivelser|<!-- [Quarto eksempel](/bruk_quarto_2209_V24.qmd) <br> [eksempel.bib](/eksempel.bib) <br> [norsk.yml](/norsk.yml) <br> [apa.csl](/apa.csl) <br> [bilde fra jupyter](/Screenshot.png)<br> [Generisk struktur](/Struktur_bacheloroppgave.pdf) <br> [Erlends mal](https://github.com/uit-sok-2209-v25/uit-sok-2209-v25.github.io/tree/main/mal) <br> [Karakterbeskrivelser](/karakterbeskrivelser_studenter.pdf) --> |
 |**02.02.**| Frist| Innlevering av presentasjonen|[Canvas](https://uit.instructure.com/courses/41817/assignments){:target="blank"} innen kl 16.00 |
