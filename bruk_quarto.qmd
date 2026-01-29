@@ -1,6 +1,6 @@
 ---
 title: "Bruk av Quarto"        # Dokumenttittel (vises på forsiden/øverst)
-subtitle: "SOK-1301 H25"       # Undertittel
+subtitle: "SOK-2209 V26"       # Undertittel
 author: "Mikko Moilanen"       # Forfatter
 
 format:                       # Utdataformat(er)
