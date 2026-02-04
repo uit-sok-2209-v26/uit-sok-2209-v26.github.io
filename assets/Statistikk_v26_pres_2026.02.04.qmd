@@ -1,0 +1,1748 @@
+---
+title: "Praktisk statistikk for bacheloroppgave"
+author: "Andrea Mannberg "
+format: 
+  revealjs:
+    smaller: true
+    scrollable: true
+    #chalkboard: true
+    #multiplex: true
+    self-contained: true
+    footer: "[uit-sok-2303-V26.github.io/](https://uit-sok-2303-V26.github.io/)"
+    slide-number: c/t
+    title-slide-attributes:
+      data-background-image: title_slide.png
+      data-background-size: cover
+date: today
+css: style.css
+editor: visual
+from: markdown+emoji
+
+---
+
+## Case
+
+### Problemstilling
+
+Lønner seg investeringer i humankapital, og er avkastningen lik uansett kjønn og innvandringsstatus? 
+
+### Teori:
+* Humankapitalteori
+* Diskriminering (taste-based, markedsmakt)
+
+## Hypoteser:
+  * Investeringer i utdanning er positivt korrelerert å ha en jobb.
+  * Investeringer i utdanning er positivt korrelert med inntekt.
+  * Kvinner har lavere lavere sysselsettingsrate enn menn ved et gitt nivå på investeringer i utdanning. 
+  * Kvinner har lavere inntekt enn menn ved et gitt nivå på investeringer i utdanning. 
+  
+## Hypoteser i ligningsform:
+
+
+Et forslag til hypoteser skrevet på "ligningsform":
+
+$$
+Inntekt_i = \delta_0+ \delta_1 \cdot UtdInvest_i  +\delta_2 \cdot Kvinne_i
+$$
+
+$$
+Pr(Sysselsatt)_i = \beta_0 + \beta_1 \cdot UtdInvest_i + \beta_2 \cdot Kvinne_i
+$$  
+Basert på teorien forventer vi oss at $\delta_1>0$ og $beta_1>0$, og at  $\delta_2>0$ og $beta_2>0$.
+
+* Er det noe fundamentalt viktig vi misser her? (vi kommer tilbake til dette)
+
+## (Fiktiv) Data
+
+Vi har fått tilgang til et datamateriale med følgende variabler:
+
+* **gender**: Kjønn
+* **edu**: Høyeste fullførte utdanning
+* **employment**: Arbeidsstatus
+* **income**: Årlig lønnsinntekt før skatt
+* **bachelor_gpa**: Gjennomsnittlig karakter, universitetsstudier
+* **vgs_gpa**: Gjennomsnittlig karakter, videregående
+* **parent_edu**: Foreldres høyeste fullførte utdanning
+* **immigrant**: Innvandringsstatus
+* **age**: Alder
+
+```{r}
+#| echo: false 
+
+set.seed(123)
+n <- 4000
+
+### KJØNN
+gender_true <- factor(
+  sample(c("Mann", "Kvinne"), n, replace = TRUE, prob = c(0.45, 0.55))
+)
+
+### ALDER OG FØDSELSÅR
+age <- sample(19:75, n, replace = TRUE)
+
+birthyear <- 2025 - age
+
+### INNVANDRERSTATUS
+immigrant_true <- factor(
+  sample(c("Norskfødt_norske_foreldre","Født_i_utlandet","Norskfødt_foreldre_utlandet"),
+         n, replace = TRUE, prob = c(0.7,0.1,0.2)),
+  levels=c("Norskfødt_norske_foreldre","Født_i_utlandet","Norskfødt_foreldre_utlandet"),
+  ordered=TRUE
+)
+parent_immigrant <- ifelse(immigrant_true=="Norskfødt_norske_foreldre","Norge","Utland")
+
+### FORELDRES UTDANNING
+edu_levels <- c("Grunnskole","Vgs_yrkesfag","Vgs_allmenn","Fagskole","Bachelor","Master")
+parent_probs <- c(0.15,0.34,0.2,0.2,0.1,0.01)
+
+parent_edu_true <- rep(NA_character_, n)
+for(i in 1:n){
+  probs <- parent_probs
+  if(parent_immigrant[i]=="Utland"){
+    probs <- probs * exp(-(0:(length(probs)-1))*0.3)
+    probs <- probs / sum(probs)
+  }
+  parent_edu_true[i] <- sample(edu_levels, 1, prob=probs)
+}
+parent_edu_true <- factor(parent_edu_true, levels=edu_levels, ordered=TRUE)
+
+### UNGDOMSSKOLEKARAKTER
+ability <- rnorm(n)
+ung_gpa_true <- rnorm(n, mean=3.3 + 0.35*ability + 0.25*(gender_true=="Kvinne") +
+                        0.15*(parent_edu_true %in% c("Bachelor","Master")), sd=0.35)
+ung_gpa_true <- pmin(pmax(ung_gpa_true,2),5)
+
+### BARNETS UTDANNING
+edu_true <- rep(NA_character_, n)
+for(i in 1:n){
+  probs <- rep(1,length(edu_levels))
+  # foreldres utdanning
+  p_level <- which(edu_levels==parent_edu_true[i])
+  probs <- probs * exp((0:(length(probs)-1) - (p_level-1))*0.5)
+  # innvandrerstatus
+  if(immigrant_true[i]!="Norskfødt_norske_foreldre"){
+    probs <- probs * exp(-(0:(length(probs)-1))*0.3)
+  }
+  # ungdomsskolekarakter
+  gpa_eff <- ung_gpa_true[i]-3.5
+  probs <- probs * exp((0:(length(probs)-1)*0.6*gpa_eff))
+  probs <- probs/sum(probs)
+  edu_true[i] <- sample(edu_levels,1,prob=probs)
+}
+edu_true <- factor(edu_true, levels=edu_levels, ordered=TRUE)
+
+### VIDEREGÅENDE KARAKTER (VGS+)
+vgs_gpa_true <- rep(NA_real_, n)
+idx_vgs <- edu_true %in% c("Vgs_yrkesfag","Vgs_allmenn","Fagskole","Bachelor","Master")
+vgs_gpa_true[idx_vgs] <- rnorm(sum(idx_vgs), mean=3.4 +
+                                 0.1*(edu_true[idx_vgs] %in% c("Bachelor","Master")) +
+                                 0.3*(parent_edu_true[idx_vgs] %in% c("Bachelor","Master")) +
+                                 0.2*(gender_true[idx_vgs]=="Kvinne"), sd=0.35)
+vgs_gpa_true <- pmin(pmax(vgs_gpa_true,2),5)
+
+### BACHELOR KARAKTER
+bachelor_gpa_true <- rep(NA_real_, n)
+idx_bach <- edu_true %in% c("Bachelor","Master")
+bachelor_gpa_true[idx_bach] <- 0.9*vgs_gpa_true[idx_bach] +
+  0.1*(gender_true[idx_bach]=="Kvinne") + rnorm(sum(idx_bach),0,0.15)
+bachelor_gpa_true <- pmin(pmax(bachelor_gpa_true,2),5)
+
+### ARBEIDSMARKED
+vgs_gpa_scaled <- scale(vgs_gpa_true)
+vgs_gpa_scaled[is.na(vgs_gpa_scaled)] <- 0  # null-effekt for de uten VGS
+
+age_eff_lf <- 
+  -1.2*(age < 25) +
+  -0.8*(age >= 65 & age <= 75)
+
+
+linpred_lf <- 2.1 +
+  1.2*(edu_true %in% c("VGS_yrkesfag","Fagskole","Bachelor","Master")) +
+  0.2*vgs_gpa_scaled -
+  1.5*(gender_true=="Kvinne") -
+  0.7*(immigrant_true!="Norskfødt_norske_foreldre")
+
+linpred_lf <- linpred_lf + age_eff_lf
+
+in_labor_force <- rbinom(n,1,plogis(linpred_lf))
+in_labor_force[age > 75] <- 0
+
+
+linpred_unemp <- -2.8 +
+  0.6*(immigrant_true!="Norskfødt_norske_foreldre") +
+  0.4*(gender_true=="Mann") -
+  1.0*(edu_true %in% c("VGS_yrkesfag","Fagskole")) -
+  0.8*(edu_true=="Master") -
+  0.4*(edu_true=="Bachelor") -
+  0.05*vgs_gpa_scaled
+
+unemployed <- rep(NA,n)
+unemployed[in_labor_force==1] <- rbinom(sum(in_labor_force==1),1,
+                                        plogis(linpred_unemp[in_labor_force==1]))
+
+employed_true <- rep(NA_character_, n)
+employed_true[in_labor_force==0] <- "Ikke i arbeidsstyrken"
+employed_true[in_labor_force==1 & unemployed==1] <- "Arbeidsledig"
+employed_true[in_labor_force==1 & unemployed==0] <- "Sysselsatt"
+employed_true <- factor(employed_true, levels=c("Sysselsatt","Arbeidsledig","Ikke i arbeidsstyrken"))
+
+### INNTEKT (sysselsatt)
+edu_eff_inc <- c(Grunnskole=0.05, VGS_yrkesfag=0.40, VGS_allmenn=0.20,
+                 Fagskole=0.50, Bachelor=0.30, Master=0.55)
+
+age_centered <- age - 45
+
+log_income <- 12.6 +
+  edu_eff_inc[edu_true] +
+  0.15*vgs_gpa_scaled +
+  0.01*scale(ifelse(is.na(bachelor_gpa_true),
+                    mean(bachelor_gpa_true,na.rm=TRUE),
+                    bachelor_gpa_true))[,1] +
+  0.40*(gender_true=="Mann") +
+  0.30*(gender_true=="Kvinne")*(edu_true %in% c("Bachelor","Master")) +
+  0.25*(immigrant_true!="Norskfødt_norske_foreldre")*(edu_true %in% c("Fagskole","Bachelor","Master")) +
+  0.03*age_centered -        # stigende del
+  0.0007*(age_centered^2) +  # fallende del (omvendt U)
+  rnorm(n,0,0.35)
+
+
+income_true <- ifelse(employed_true=="Sysselsatt",exp(log_income),NA)
+
+
+### STUDENTDATA
+gender <- ifelse(gender_true=="Kvinne", 1, 0)
+immigrant <- as.numeric(immigrant_true)
+edu <- as.numeric(edu_true)
+parent_edu <- as.numeric(parent_edu_true)
+employed <- as.numeric(employed_true) # 1=Sysselsatt,2=Arbeidsledig,3=Ikke i arbeidsstyrken
+
+vgs_gpa <- round(vgs_gpa_true,2)
+bachelor_gpa <- round(bachelor_gpa_true,2)
+ung_gpa <- round(ung_gpa_true,2)
+income <- round(income_true,0)
+
+vgs_gpa[is.na(vgs_gpa)] <- -99
+bachelor_gpa[is.na(bachelor_gpa)] <- -99
+income[is.na(income)] <- -99
+
+data <- data.frame(
+  gender, age, birthyear, immigrant, edu, parent_edu, ung_gpa,
+  vgs_gpa, bachelor_gpa, employed, income
+)
+
+
+```
+
+Vi må nå "operasjonalisere" våre hypoteser, det vil si definere dem ut ifra datamaterialet.
+
+**Et forslag:** 
+
+* Vi bruker "*edu*" og "*bachelor_gpa*" som indikatorer på individets investeringer i utdanning. 
+* Vi bruker "*gender*" for kjønn. 
+* Vi bruker "*income*" og "*employed*" til avhengige variabler. 
+
+
+
+## Empirisk analyse 
+
+### Første møte med data: regresjonsanalyse!
+  
+**Modeller:**
+
+```{r}
+#| echo: true 
+# Linjere modeller ved bruk av OLS
+
+#Inntekt
+lm_inc <- lm(income ~ edu + bachelor_gpa +  gender , data = data)
+
+# Sysselsetting
+lm_emp <- lm(employed ~  edu + bachelor_gpa + immigrant + gender, data = data)
+
+```
+
+
+## Resultater
+
+```{r}
+#| echo: true 
+#Inntekt
+summary(lm_inc)
+# Sysselsetting
+summary(lm_emp)
+```
+
+**Hva sier disse resultatene oss?**
+
+## Grafisk analyse
+
+For å få en bedre forståelse for datamaterialet og resultatene kan vi gjennomføre grafisk analyse av sammenhengen mellom våre utfallsvariabler (avhengige variabler) og de viktigste forklarende variablene. 
+
+**Viktig spørsmål å stille seg når vi ser på grafene: ser alt ut "som forventet" eller er det noe dere stusser på?**
+
+## Inntekt vs karakter fra universitetsstudier: 
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+library(ggplot2)
+
+plot_bcgpa <- ggplot(data, aes(x = bachelor_gpa, y = income)) +
+  geom_jitter() +
+  labs(
+    x = "Bachelor GPA",
+    y = "Inntekt",
+    title = "Scatterplot: Inntekt vs karakter på universitet"
+  ) +
+  theme_minimal()
+
+print(plot_bcgpa)
+
+```
+
+
+## Inntekt vs utdanning: 
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(ggplot2)
+
+plot_edu <- ggplot(data, aes(x = edu, y = income)) +
+  geom_jitter(width = 0.1, alpha = 0.5, size = 0.5) +
+  labs(
+    x = "utdanning",
+    y = "Inntekt",
+    title = "Scatterplot: Inntekt vs utdanningsnivå"
+  ) +
+  scale_x_continuous(breaks = seq(0, 6, by = 1))+
+  theme_minimal()
+
+print(plot_edu)
+```
+ 
+## Arbeidsstatus vs utdanningsnivå og kjønn
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(ggplot2)
+
+plot_arbstatus_edu <- ggplot(data, aes(x = edu, y = employed)) +
+  geom_jitter(width = 0.1, alpha = 0.5, size = 0.5) +
+  labs(
+    x = "Utdanning",
+    y = "Arbeidsstatus",
+    title = "Scatterplot: Arbeidsstatus vs utdanning"
+  ) +
+  scale_x_continuous(breaks = seq(0, 6, by = 1))+
+  theme_minimal()
+
+print(plot_arbstatus_edu)
+
+plot_arbstatus_kjonn <- ggplot(data, aes(x = gender, y = employed)) +
+  geom_jitter(width = 0.1, alpha = 0.5, size = 0.5) +
+  labs(
+    x = "Kjønn",
+    y = "Arbeidsstatus",
+    title = "Scatterplot: Arbeidsstatus vs kjønn"
+  ) +
+  scale_x_continuous(breaks = seq(0, 6, by = 1))+
+  theme_minimal()
+
+print(plot_arbstatus_kjonn)
+
+```
+
+
+
+## Informasjon om variablene i datamaterialet
+
+La oss se litt nærmere på datamaterialet
+
+```{r}
+#| echo: true
+# Beskrivelse av variabler i data materialet
+str(data)
+```
+
+**Er det noe dere reagerer på?**
+
+## Kodebok
+
+Vi har tillgang til en kodebok knyttet til datamaterialet. I denne finner vi følgende informasjon.
+
+* gender = Kjønn
+  * Nivåer:
+    * 1 = "Kvinne"
+    * 0 = "Mann"
+    * -99 = "Missing"
+    
+* age = Alder
+  * Numerisk variabel (integer)
+    * - 99 = "Missing"
+
+* birthyear = Fødselsår
+  * Numerisk variabel (integer)
+    * - 99 = "Missing"
+  
+* edu = Høyeste fullførte utdanning
+  * Nivåer: 
+    * 1 = "Grunnskole"
+    * 2 = "Vgs_yrkesfag"
+    * 3 = "Vgs_allmenn"
+    * 4 = "Fagskole"
+    * 5 = "Bachelor"
+    * 6 = "Master"
+    * -99 = "Missing"
+    
+* parent_edu = Foreldres høyeste fullførte utdanning
+  * Nivåer: 
+    * 1 = "Grunnskole"
+    * 2 = "Vgs_yrkesfag"
+    * 3 = "Vgs_allmenn"
+    * 4 = "Fagskole"
+    * 5 = "Bachelor"
+    * 6 = "Master"
+    * -99 = "Missing"
+
+* ung_gpa = Gjennomsnittlig karakter, ungdomsskole
+  * Nivåer:
+    * Numerisk variabel: 1 - 5
+    * -99 = "Missing" 
+    
+* vgs_gpa = Gjennomsnittlig karakter, videregående
+  * Nivåer:
+    * Numerisk variabel: 1 - 5
+    * -99 = "Missing" 
+    
+* bachelor_gpa = Gjennomsnittlig karakter, universitetsstudier
+  * Nivåer:
+    * Numerisk variabel: 1 - 5
+    * -99 = "Missing"
+    
+
+* employed = Arbeidsstatus
+  * Nivåer:
+    * 1 = Sysselsatt
+    * 2 = Arbeidsledig
+    * 3 = Ikke i arbeidsstyrken
+    * - 99 = "Missing"
+    
+* immigrant = Innvandringsstatus
+  * Nivåer:
+    * 1 = "Norskfødt med norske foreldre"
+    * 2 = "Født i utlandet"
+    * 3 = "Norskfødt med foreldre fødte i utlandet"
+    * -99 = "Missing"
+
+* income = Årlig lønnsinntekt
+  * Nivåer: Numerisk variabel
+    * - 99 = "Missing"
+  
+
+Vi kan se på min, maks, gjennomsnitt og spredning i data materialet:
+```{r}
+#| echo: true
+# Min, Maks, gjenommsnitt og spredning i datamaterialet
+summary(data)
+```
+
+**Hva lærer vi av dette?** 
+
+
+## Konklusjoner:
+
+* Det er lurt å se på datamaterialet før man estimerer en regresjonsmodell!
+* Før vi kan estimere en modell må vi se til at data har en rydding struktur og at statistikkprogrammet forstår hvordan det skal håndtere ulike variabler og verdier.
+
+
+## Data håndtering
+
+### Håndtering av manglende observasjoner
+
+Vi har sett at manglende observasjoner er kodet "-99". 
+
+Vi må kode om disse slik at R-studio forstår at disse observasjonen mangler informasjon, og at "-99" ikke betyr "svært små verdier".
+
+```{r}
+#| echo: true
+# Håndtering av manglende observasjoner (endre fra -99 til reelt "NA")
+
+library(tidyverse)
+
+data_na <- data %>%
+  mutate(across(
+    c(gender, edu, parent_edu, ung_gpa, vgs_gpa, bachelor_gpa, income), 
+    ~ ifelse(. == -99, NA, .)
+  ))
+
+```
+
+##
+
+```{r}
+#| echo: true
+str(data_na)
+```
+
+```{r}
+#| echo: true
+summary(data_na)
+```
+
+## Nytt forsøk: Inntekt vs karakter på universitetet 
+
+Når vi har gjort dette ser sammenhengen mellom karakterer og inntekt mindre rar ut. 
+
+```{r}
+#| echo: false 
+# Sammenheng mellom karakterer på universitet og inntekt
+
+plot_bcgpa <- ggplot(data_na, aes(x = bachelor_gpa, y = income)) +
+  geom_jitter() +
+  labs(
+    x = "Bachelor GPA",
+    y = "Inntekt",
+    title = "Scatterplot: Inntekt vs karakter på universitetet"
+  ) +
+  theme_minimal()
+
+plot_bcgpa
+
+```
+
+##
+
+Problemet med utdanningsnivå og arbeidstatus gjenstår. 
+
+* Disse er ikke numeriske variabler, de er faktorvariabler. 
+
+
+## Typer variabler
+
+- **Nominal**
+  - Kategorier uten rekkefølge  
+
+- **Ordinal**
+  - Kategorier med rekkefølge  
+  - Ukjent avstand mellom nivåer  
+
+- **Numerisk**
+  - **Diskret**: telling (heltall)  
+  - **Kontinuerlig**: måling (intervall = alle reelle verdier mellom to grenser)  
+
+
+* Klarer dere å finne eksempler på disse ulike variabeltypene?
+
+## Håndtering av faktorvariabler
+
+* NB: I vårt datamateriale er utdanning "nesten" ordinal, men ikke helt (det går ikke å enkelt sammenligne VGS yrkesfag imot VGS allmenn). De andre faktorvariablene er nomiale.
+* For å si til R at en variabel er ordinal kan vi bruke "ordered = TRUE". For den regresjonsanalyse som dere skal bruke spiller det ikke noen rolle om vi koder ordinale variabler som nomiale. De blir sett på som dummy-variabler uansett. 
+
+```{r}
+#| echo: true
+# Håndtering av faktorvariabler (endre fra numeriske variabler til nomiale variabler)
+
+# Definer nivåer på variabler
+
+gender_levels <- c(
+  "Mann",
+  "Kvinne"
+)
+
+edu_levels <- c(
+  "Grunnskole",
+  "VGS yrkesfag",
+  "VGS allmenn",
+  "Fagskole",
+  "Bachelor",
+  "Master"
+)
+
+immigrant_levels <- c(
+  "Norskfødt med norske foreldre",
+  "Født i utlandet",
+  "Norskfødt med foreldre fødte i utlandet"
+)
+
+employed_levels <- c(
+  "Sysselsatt",
+  "Arbeidsledig",
+  "Ikke i arbeidsstyrken"
+)
+
+# Transformer variabler som er faktorvariabler til riktig format
+data_clean <- data_na %>%
+  mutate(
+    gender = factor(
+      gender,
+      levels = 0:1,
+      labels = gender_levels
+    )
+  )%>%
+ mutate(
+    edu = factor(
+      edu,
+      levels = 1:6,
+      labels = edu_levels
+    )
+  )%>%
+  mutate(
+    parent_edu = factor(
+      parent_edu,
+      levels = 1:6,
+      labels = edu_levels
+    )
+  )%>%
+  mutate(
+    immigrant = factor(
+      immigrant,
+      levels = 1:3,
+      labels = immigrant_levels
+    )
+  )%>%
+  mutate(
+    employed = factor(
+      employed,
+      levels = 1:3,
+      labels = employed_levels
+    )
+  )
+  
+```
+
+##
+
+```{r}  
+#| echo: true
+str(data_clean)
+summary(data_clean)
+```
+
+Nå har vi riktig format på variablene og vet at verdiene gir mening. 
+
+##
+
+### Inntektsregresjon for individer med gyldig inntekt og faktorvariabler
+
+**NB: De fleste statistikkprogrammer bruker den "første" kategorien som referanse i regresjonen. Det går å velge hvilken gruppe man ønsker å sammenligne med. Velg referansegruppe ut ifra deres hypoteser.** 
+
+```{r}
+#| echo: true
+lm_inc <- lm(income ~ edu + bachelor_gpa + gender , data = data_clean)
+
+summary(lm_inc)
+```
+
+**Hm... vi har fortsatt problemer..**
+
+* Hvorfor har vi ikke med alle utdanningsnivåer?
+* Hvorfor dropper R så mange observasjoner: "(N observations deleted due to missingness)"?
+
+
+##
+
+### Analyse av manglende observasjoner
+
+La oss se på fordelingen av manglende observasjoner i vårt datamateriale.
+
+```{r}
+#| echo: true
+colSums(is.na(data_clean))
+```
+
+##
+
+**Hvordan ser fordelingen av manglende bachelor_gpa ut verdier ut hvis vi ser på ulike utdanningskategorier?**
+```{r}
+#| echo: false
+
+cat(
+  "Antall med manglende bachelor-karakter blant dem uten høyere utdanning:",
+  sum(is.na(data_clean$bachelor_gpa) & 
+        data_clean$edu %in% c("Grunnskole", "VGS yrkesfag", "VGS allmenn", "Fagskole")),
+  "\n\n"
+)
+
+cat(
+  "Antall med manglende bachelor-karakter blant dem med bachelor eller master:",
+  sum(is.na(data_clean$bachelor_gpa) & 
+        data_clean$edu %in% c("Bachelor", "Master")),
+  "\n\n"
+)
+
+cat(
+  "Antall med manglende ungdomsskole-karakter blant dem med kun grunnskole:",
+  sum(is.na(data_clean$ung_gpa) & data_clean$edu == "Grunnskole"),
+  "\n\n"
+)
+
+cat(
+  "Antall med manglende ungdomsskole-karakter blant dem med VGS eller høyere utdanning:",
+  sum(is.na(data_clean$ung_gpa) & 
+        data_clean$edu %in% c("VGS yrkesfag", "VGS allmenn", "Fagskole", "Bachelor", "Master"))
+)
+
+```
+
+##
+
+**Hvordan ser fordelingen av manglende inntektsverdier ut hvis vi ser på individer med ulik arbeidsstatus?**
+
+```{r}
+#| echo: false
+
+cat(
+  "Antall med manglende inntekt blant sysselsatte:",
+  sum(is.na(data_clean$income) & 
+        data_clean$employed == "Sysselsatt"),
+  "\n\n"
+)
+
+cat(
+  "Antall med manglende inntekt blant arbeidsledige:",
+  sum(is.na(data_clean$income) & data_clean$employed == "Arbeidsledig"),
+  "\n\n"
+)
+
+cat(
+  "Antall med manglende inntekt blant individer utenfor arbeidsstyrken:",
+  sum(is.na(data_clean$income) & data_clean$employed == "Ikke i arbeidsstyrken"),
+  "\n\n"
+)
+
+```
+
+**Hva lærer vi fra denne analysen?**
+
+## 
+
+### Tips!
+
+Et godt tips, rent generelt, er å se på deskriptiv for datamaterialet. Dette gir oss både en indikasjon på om vi har en "case", og om noen variabler ser "rare" ut (f.eks ekstreme eller uventete verdier)
+
+##
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+
+# Velg kontinuerlige og faktorer
+cont_vars <- c("ung_gpa", "vgs_gpa", "bachelor_gpa", "income")
+fact_vars <- c("gender", "edu", "employed")
+
+tab_cont <- data_clean %>%
+  select(ung_gpa, vgs_gpa, bachelor_gpa, income) %>%
+  summarise(across(everything(), list(
+    Mean = ~mean(., na.rm = TRUE),
+    SD   = ~sd(., na.rm = TRUE),
+    Min  = ~min(., na.rm = TRUE),
+    Max  = ~max(., na.rm = TRUE),
+    N    = ~sum(!is.na(.))
+  ), .names = "{.col}_{.fn}")) %>%
+  pivot_longer(
+    everything(),
+    names_to = c("Variable","Stat"),
+    names_pattern = "^(.*)_(.*)$",
+    values_to = "Value"
+  ) %>%
+  pivot_wider(
+    names_from = Stat,
+    values_from = Value
+  )%>%
+  # Runder alle tall til 3 desimaler
+  mutate(across(where(is.numeric), ~round(., 3)))
+
+# Faktorer
+tab_fact <- map_dfr(fact_vars, function(v){
+  data_clean %>%
+    group_by(across(all_of(v))) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    mutate(
+      Prosent = round(100 * n / sum(n), 1),
+      Variabel = v
+    ) %>%
+    rename(Nivå = all_of(v)) %>%
+    select(Variabel, Nivå, n, Prosent)
+})
+
+# Andel i hver kategori av utfallsvariabel etter grupper
+# Faktorvariabler
+tab_group <- function(group_var){
+  data_clean %>%
+    group_by(.data[[group_var]], employed) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(.data[[group_var]]) %>%
+    mutate(Prosent = round(100*n/sum(n),1)) %>%
+    rename(Gruppe= !!group_var,
+           Status = employed) %>%
+    select(Gruppe, Status, n, Prosent)
+}
+
+# Kontinuerlige utfallsvariabler
+# Utdanning
+tab_income_edu <- data_clean %>%
+  group_by(edu) %>%
+  summarise(
+    Gjennomsnitt = mean(income, na.rm = TRUE),
+    Min  = min(income, na.rm = TRUE),
+    Maks = max(income, na.rm = TRUE),
+    SD   = sd(income, na.rm = TRUE),
+    n           = n()
+  )
+
+# Kjønn
+tab_income_kjonn <- data_clean %>%
+  group_by(gender) %>%
+  summarise(
+    Gjennomsnitt = mean(income, na.rm = TRUE),
+    Min  = min(income, na.rm = TRUE),
+    Maks = max(income, na.rm = TRUE),
+    SD   = sd(income, na.rm = TRUE),
+    n           = n()
+  )
+
+
+```
+
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+
+# Tabell for HTML
+tab_cont %>%
+  kable("html", caption = "Deskriptiv statistikk for kontinuerlige variabler") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped","hover"))
+
+tab_fact %>%
+  kable("html", caption = "Deskriptiv statistikk for kategoriske variabler") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped","hover"))
+
+```
+
+##
+
+**Vi kan også bruke deskriptiv statistikk til å få et første inntrykk av om data ser ut å gi støtte til våre hypoteser**
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+
+# Utdanning
+tab_edu <- tab_group("edu")
+
+tab_edu %>%
+  kable("html", caption = "Fordeling av arbeidsstatus etter utdanning") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped","hover"))
+
+tab_income_edu %>%
+  kable(
+    "html",
+    caption = "Inntekt etter utdanningsnivå"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover")
+  )
+
+```
+
+##
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+
+# Kjønn
+tab_gender <- tab_group("gender")
+
+# Print tabellene
+tab_gender %>%
+  kable("html", caption = "Fordeling av arbeidsstatus etter kjønn") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped","hover"))
+
+tab_income_kjonn %>%
+  kable(
+    "html",
+    caption = "Inntekt etter kjønn"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover")
+  )
+
+```
+
+
+## 
+
+**Hvordan kan vi bruke det vi har lært for å gjøre modellene "bedre"?**
+
+
+### Inntektsregresjonen
+
+* **Utfordring**: Manglende observasjoner -  De som ikke har gått på universitet har ikke karakter fra universitet.
+* Kan vi bruke noen annen variabel som indikator på investering i utdanning, som ikke har dette problemet?
+
+##
+
+#### Inntekts-regresjon for individer med gyldig inntekt, faktorvariabler og karakter fra ungdomsskole
+
+```{r}
+lm_inc_1 <- lm(income ~ edu + ung_gpa + gender , data = data_clean)
+summary(lm_inc_1)
+```
+
+* Nå ser modellen mer ut som vi forventer. Vi taper fortsatt observasjoner, som følge av at folk som ikke er i jobb ikke heller har lønnsinntekt. Det må vi huske på når vi tolker resultatene. 
+
+* Før vi tolker regresjonen må vi også sjekke at vi ikke har problemer som fører til at regresjonen gir et skjevt bilde av tegn og signifikanse på effekter.  
+
+##
+### Kvalitetssjekk av modellen: sjekk av antakelser for OLS
+
+**Har vi problemer med heteroskedastisitet?**
+
+Hva vi ønsker å se: tilfeldig spredning av residualene (ingen mønster).
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+# Residuals vs fittet
+# Hva vi ønsker å se: sky rundt 0 (vertikalt), ingen mønstre eller vifte-former
+plot(lm_inc_1, which = 1, main = "Model fit")
+# Standardized residuals vs fitted
+# Hva vi ønsker å se: Omtrent horisontal linje og jevn spredning lengs x-aksen
+plot(lm_inc_1, which = 3, main = "Model fit")
+```
+
+Vi ser at residualene samles i "klomper" langs ved x-aksene. Dette er en konsekvens av at mange av våre forklaringsvariabler er kategoriske. Dette er ikke et problem i seg selv. 
+
+Derimot ser vi at en vifte-form i figur 1 (spredningen (vertikalt) øker med vedien på x-aksen), og en positiv trend i figur 2. Dette er et tegn på heteroskedastisitet. 
+
+## 
+
+**Er residualene normal-fordelte?**
+
+Hvis residualene er normalfordelte vil de ligge sånn cirka på en rett linje (konstant helning).
+Små avvik lengs ut er ok. Store avvik indikerer at residualene ikke er normalfordelte (enten at massen ikke er symmetrisk fordelt rundt null, eller at halene er "feite").
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+plot(lm_inc_1, which = 2,  main = "Model fit")
+```
+
+
+Det ser ut at vi har problem med heteroskedastisitet og residualer som ikke er normalfordelte. 
+
+Dette er vanlige problemer, spesielt når en bruker tverrsnittsdata og når en bruker en avhengig variabel som ikke er normal fordelt. 
+
+##
+**Er inntektsvariabelen normalfordelt?**
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+density_income <- ggplot(data_clean, aes(x = income)) +
+  geom_density(alpha = 0.5) +  # alpha controls transparency
+  labs(x = "Inntekt",
+       y = "Densitet") +
+  theme_minimal() +
+  theme(legend.title = element_blank(),
+        legend.key.size = unit(1.5, 'lines'), 
+        legend.text = element_text(size = 14), 
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12, face = "bold"))
+
+print(density_income)
+
+```
+
+Vår utfallsvariabel er tydelig forskyvet mot små verdier. Dette er sannsynlig en årsak til problemene med heteroskedasitet og at residualene ikke er normalfordelte. Iblant er det mulig å få til en model som oppfylder antakelse ved å logaritmere utfallsvariabelen. 
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+data_clean$log_income <- log(data_clean$income)
+
+density_log_income <- ggplot(data_clean, aes(x = log_income)) +
+  geom_density(alpha = 0.5) +  # alpha controls transparency
+  labs(x = "log(inntekt)",
+       y = "Densitet") +
+  theme_minimal() +
+  theme(legend.title = element_blank(),
+        legend.key.size = unit(1.5, 'lines'), 
+        legend.text = element_text(size = 14), 
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12, face = "bold"))
+
+print(density_log_income)
+
+```
+
+
+## 
+
+### Regresjonsmodell med log(income) som utfallsvariabel
+
+Når utfallsvariabelen er lik inntekt fører en logaritmering til at koeffisientene kan tolkes som den prosentuelle endringen i utfallsvariabelen som en konsekvens av en endring i forklaringsvariabelen. 
+
+$$
+\ln(Inntekt_i)= \gamma + \delta_1 \cdot karakter_i + \delta_1 \cdot UtdNivå_i +\cdot \delta_2 \cdot Kvinne
+$$
+
+$$
+\frac{1}{Inntekt_i}\cdot\frac{\partial Inntekt_i}{\partial karakter_i} = \beta_1 
+$$
+$$
+\%\Delta Inntekt_i = \beta_1 \cdot\Delta karakter_i 
+$$
+
+##
+
+**Vi estimerer den nye modellen med logaritmert inntekt som utfallsvariabel:**
+
+```{r}
+#| echo: true
+lm_inc_log <- lm(log_income ~ edu + ung_gpa + gender , data = data_clean)
+#summary(lm_inc_log)
+```
+
+
+#### Sjekk av antakelser
+
+**NB: Tester av antakelser legges til vanlig i appendiks. Resultatene beskrives i teksten (i.e., at det ikke er brudd på antakelsene alternativt hvordan brudd på antakelser blir håndtert)**.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+# Sjekk av antakelser
+plot(lm_inc_log, main = "Model fit")
+library(car)
+vif(lm_inc_log)
+```
+
+**Modellen ser betydelig mer grei ut. Vi kan nå gå videre og tolke effektene**
+
+## 
+
+### Resultater
+
+**NB: det er først når vi har sjekket at modellen er til synes ok, som vi tolker resultatene**
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(broom)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Hent ut koeffisienter
+lm_tab <- tidy(lm_inc_log)
+
+
+# Lag en mapping fra term → pen etikett
+term_labels <- c(
+  "(Intercept)" = "Intercept",
+  "eduVGS yrkesfag" = "Utdanning: VGS yrkesfag",
+  "eduVGS allmenn" = "Utdanning: VGS allmenn",
+  "eduFagskole" = "Utdanning: Fagskole",
+  "eduBachelor" = "Utdanning: Bachelor",
+  "eduMaster" = "Utdanning: Master",
+  "ung_gpa" = "Ungdomsskolekarakter",
+  "genderKvinne" = "Kjønn: Kvinne"
+)
+
+# Legg på etiketter og sorter
+lm_tab <- lm_tab %>%
+  mutate(
+    term_label = term_labels[term],
+    across(c(estimate, std.error, statistic, p.value), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Intercept" ~ 0,
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8
+  )) %>%
+  arrange(order)%>%
+  select(term_label, 
+         estimate,
+         std.error,
+         statistic,
+         p.value)
+
+# Hent R² og N
+r2_adj <- round(summary(lm_inc_log)$adj.r.squared,3)
+n_obs <- nobs(lm_inc_log)
+note_text <- paste0("Justert R² = ", r2_adj, ", N = ", n_obs)
+
+# Lag HTML-tabell
+lm_tab %>%
+  select(term_label, estimate, std.error, statistic, p.value) %>%
+  kable("html", 
+        col.names = c("Variabel", "Estimert koeffisient", "Std. error", "t-verdi", "p-verdi"),
+        caption = note_text) %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+
+```  
+
+##
+
+### Prosentvise endringer i inntekt som følge av en endring i forklaringsvariabler
+
+I en modell med logaritmisk inntekt er $\beta$ den prosentvise endringen i inntekt for en liten endring i forklaringsvariabelen ($x$).
+For dummyvariabler eller store endringer må vi bruke $exp(\beta) − 1$ for å få den eksakte prosentvise effekten.
+
+Tabellen under viser direkte den prosentvise effekten på inntekt. For utdanning og kjønn er dette den eksakte prosentvise forskjellen i inntekt. For karakterer er dette den omtrentlige prosentvise endringen ved én enhets økning.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+dummy_vars <- c(
+  "eduVGS yrkesfag",
+  "eduVGS allmenn",
+  "eduFagskole",
+  "eduBachelor",
+  "eduMaster",
+  "genderKvinne"
+)
+
+lm_tab <- tidy(lm_inc_log) %>%
+  filter(term != "(Intercept)")%>%
+  mutate(
+    term_label = term_labels[term],
+
+    # Prosentvis effekt
+     perc_effect = case_when(
+       term %in% dummy_vars ~ 100 * (exp(estimate) - 1),
+       TRUE ~ 100 * estimate
+       ),
+    across(c(estimate, std.error, statistic, p.value, perc_effect),
+           ~ round(., 3))
+  ) %>%
+
+  # Ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Utdanning: VGS yrkesfag" ~ 1,
+    term_label == "Utdanning: VGS allmenn" ~ 2,
+    term_label == "Utdanning: Fagskole" ~ 3,
+    term_label == "Utdanning: Bachelor" ~ 4,
+    term_label == "Utdanning: Master" ~ 5,
+    term_label == "Ungdomsskolekarakter" ~ 6,
+    term_label == "Kjønn: Kvinne" ~ 7
+  )) %>%
+  arrange(order) %>%
+  select(term_label,
+         perc_effect)
+
+r2_adj <- round(summary(lm_inc_log)$adj.r.squared, 3)
+n_obs <- nobs(lm_inc_log)
+
+note_text <- paste0("Justert R² = ", r2_adj, ", N = ", n_obs)
+
+lm_tab %>%
+  kable(
+    "html",
+    col.names = c(
+      "Variabel",
+      "Prosentvis effekt"
+    ),
+    caption = note_text
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "left",
+    bootstrap_options = c("striped", "hover")
+  )
+
+
+```
+
+**Hva sier oss modellen, og for hvem gjelder resultatene?**
+
+## Sysselsettings-modellen
+
+* Vi har funnet ut at variabelen "employed" har tre nivåer: sysselsatt, arbeidsledig, og ikke i arbeidsstyrken. Det går ikke å bruke OLS direkte på denne variabelen (hvorfor?).
+
+* Vi kan lage en binær variabel for "sysselsatt" eller "arbeidsledig". Vi må ta en avgjørelse om hvordan "ikke i arbeidsstyrken" skal kodes. Vårt valg avhenger hva vi ønsker å måle med variabelen. 
+
+* La oss si at vi velger å se på sysselsetting. Referansegruppen er både de som er arbeidsledige og de som ikke er en del av arbeidsstyrken. 
+
+```{r}
+#| echo: true
+data_clean$employed_bin <- as.integer(data_clean$employed == "Sysselsatt")
+```
+
+## Linjer sannsynlighetsmodell (LPM)
+
+* Til tross for at utfallsvariabelen er en dummy-variabel (1/0), er det mulig å estimere en OLS. 
+* Modellen er da en linjer sannsynlighetsmodell som estimerer sannsynligheten for å være sysselsatt direkte som en linjer kombinasjon av de forklarende variablene.
+
+```{r}
+#| echo: true
+lpm_emp <- lm(employed_bin ~ edu + ung_gpa + gender, data = data_clean)
+```
+
+## Resultater fra LPM
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(broom)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Hent ut koeffisienter fra modellen
+lm_tab <- tidy(lpm_emp)
+
+
+# Lag en mapping fra term → pen etikett
+term_labels <- c(
+  "(Intercept)" = "Intercept",
+  "eduVGS yrkesfag" = "Utdanning: VGS yrkesfag",
+  "eduVGS allmenn" = "Utdanning: VGS allmenn",
+  "eduFagskole" = "Utdanning: Fagskole",
+  "eduBachelor" = "Utdanning: Bachelor",
+  "eduMaster" = "Utdanning: Master",
+  "ung_gpa" = "Ungdomsskolekarakter",
+  "genderKvinne" = "Kjønn: Kvinne"
+)
+
+# Legg på etiketter og sorter
+lm_tab <- lm_tab %>%
+  mutate(
+    term_label = term_labels[term],
+    across(c(estimate, std.error, statistic, p.value), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8,
+    term_label == "Intercept" ~ 0
+  )) %>%
+  arrange(order)%>%
+  select(term_label, 
+         estimate,
+         std.error,
+         statistic,
+         p.value)
+
+# Hent R² og N
+r2_adj <- round(summary(lpm_emp)$adj.r.squared,3)
+n_obs <- nobs(lpm_emp)
+note_text <- paste0("Justert R² = ", r2_adj, ", N = ", n_obs)
+
+# Lag HTML-tabell
+lm_tab %>%
+  select(term_label, estimate, std.error, statistic, p.value) %>%
+  kable("html", 
+        col.names = c("Variabel", "Estimert koeffisient", "Std. error", "t-verdi", "p-verdi"),
+        caption = note_text) %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+
+```
+
+## 
+
+### Fordeler med linjere sannsynlighetsmodeller
+
+* En fordel med en linjer sannsynlighetsmodell er at koeffisientene er veldig enkle å tolke. 
+  * Modellen predikerer at individer som har gått fagskole har 20.5 prosentenheter høyere sannsynlighet å være sysselsatte en individer som kun har gått grunnskole. 
+  * Modellen predikerer at kvinner har 15.1 prosentenheter lavere sannsynlighet for å være sysselsatte enn menn.
+
+##
+
+### Ulemper med linjere sannsynlighetsmodeller
+
+* Et problem med den linjere sannsynlighetsmodellen er at den kan predikere verdier større enn 1, og mindre enn null. Siden modellen estimerer en sannsynlighet gir disse tallene ikke mening. I vår modell ser vi, heldigvis, ikke ut å ha problemer med dette. 
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+pred_lpm <- predict(lpm_emp)
+summary(pred_lpm)
+```
+
+* Et annet problem er at residualene ikke vil være normalfordelte, og vil være heteroskedastiske fordi variansen av feilleddet avhenger av forklaringsvariablene. Standardfeilene blir ofte for små. Dette fører til økt risiko for type I feil (modellen viser signifikante effekter når effektene er insignifikante). 
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+plot(lpm_emp, which = 1, main = "Model fit" )
+plot(lpm_emp, which = 3, main = "Model fit")
+plot(lpm_emp, which = 2, main = "Model fit")
+```
+
+##
+
+### Håndtering av heteroskedasticitet i OLS
+
+Vi kan håndtere heteroskedastisiteten ved bruk av "Robuste standardfeil". En vanlig metode for å estimere robuste standardfeil er "Sandwich-metoden". Denne endrer ikke koefisientene men korrigerer standardfeilen (til vanlig blir de noe større og reduserer derfor signifikansen).  
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+# Robuste standardfeil (HC1)
+library(sandwich)
+library(lmtest)
+
+lpm_robust <- coeftest(
+  lpm_emp,
+  vcov = vcovHC(lpm_emp, type = "HC1")
+)
+
+
+# Hent ut koeffisienter
+lpm_r_tab <- tidy(lpm_robust)
+
+
+# Lag en mapping fra term → pen etikett
+term_labels <- c(
+  "(Intercept)" = "Intercept",
+  "eduVGS yrkesfag" = "Utdanning: VGS yrkesfag",
+  "eduVGS allmenn" = "Utdanning: VGS allmenn",
+  "eduFagskole" = "Utdanning: Fagskole",
+  "eduBachelor" = "Utdanning: Bachelor",
+  "eduMaster" = "Utdanning: Master",
+  "ung_gpa" = "Ungdomsskolekarakter",
+  "genderKvinne" = "Kjønn: Kvinne"
+)
+
+# Legg på etiketter og sorter
+lpm_r_tab <- lpm_r_tab %>%
+  mutate(
+    term_label = term_labels[term],
+    across(c(estimate, std.error, statistic, p.value), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8,
+    term_label == "Intercept" ~ 0
+  )) %>%
+  arrange(order)%>%
+  select(term_label, 
+         estimate,
+         std.error,
+         statistic,
+         p.value)
+
+# Lag HTML-tabell
+lpm_r_tab %>%
+  select(term_label, estimate, std.error, statistic, p.value) %>%
+  kable("html", 
+        col.names = c("Variabel", "Estimert koeffisient", "Std. error", "t-verdi", "p-verdi"),
+        caption = note_text) %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+
+```
+
+
+
+## Ikke-linjere modeller: Logit (og Probit)
+
+Vi kan også estimere en ikke-linjer modell som tar hensyn til at utfallsvariabelen er binær. To vanlige modeller er "Logit" og "Probit". Vi estimerer en Logit under. 
+
+$$
+\Pr(\text{employed} = 1 \mid X) = \frac{1}{1 + \exp\Big(-(\beta_0 + \beta_1 \text{Utdanning} + \beta_2 \text{Ungdomsskolekarakter} + \beta_3 \text{Kjønn})\Big)} 
+$$
+
+```{r}
+#| echo: true
+
+logit_emp <- glm(
+  employed_bin ~ edu + ung_gpa + gender,
+  data = data_clean,
+  family = binomial(link = "logit")
+)
+```
+
+
+##
+
+### Resultater
+```{r}
+#| echo: false
+
+library(broom)
+library(pscl)
+logit_tab <- tidy(logit_emp)
+
+
+# Legg på etiketter og sorter
+logit_tab <- logit_tab %>%
+  mutate(
+    term_label = term_labels[term],
+    across(c(estimate, std.error, statistic, p.value), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8,
+    term_label == "Intercept" ~ 0
+  )) %>%
+  arrange(order)%>%
+  select(term_label, 
+         estimate,
+         std.error,
+         statistic,
+         p.value)
+
+# Hent R² og N
+r2_p <- round(pR2(logit_emp)["McFadden"], 3)
+n_obs <- nobs(lm_emp)
+note_text <- paste0("Pseudo R² = ", r2_p, ", N = ", n_obs)
+
+library(knitr)
+library(kableExtra)
+
+logit_tab %>%
+  select(term_label, estimate, std.error, statistic, p.value) %>%
+  kable("html",
+        col.names = c("Variabel", "Estimert koeffisient", "Std. error", "z-verdi", "p-verdi"),
+        caption = paste0("Pseudo R² = ", r2_p, ", N = ", nobs(logit_emp))) %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped", "hover"))
+
+  
+```
+
+## Tolkning av resultatene fra Logit-modeller
+
+* Som følge av at modellen er ikke-linjer går det ikke å tolke estimatene som effekter i termer av prosent-enheter (de er log odds). 
+* Vi kan dog vise at modellen predikerer sannsynligheter mellom null og ett.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+# Predikert sannsynlighet
+pred_logit <- predict(logit_emp, type = "response")
+summary(pred_logit)
+```
+
+* Logit tar hensyn til at variansen ikke er konstant og at data er heteroskedastiske. Her må en isteden sjekke at variansen ikke er "for stor" eller "for liten" (over/under dispersion). Dette er likevel overkurs får nå. 
+
+
+## Marginaleffekter
+
+Logit-modeller er relativt enkle å estimere og det går fint å beregne marginal-effekter som er enklere å tolke!
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+# Marginaleffekter
+library(margins)
+
+mfx <- margins(logit_emp)
+
+
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+term_labels <- c(
+  "eduVGS yrkesfag" = "Utdanning: VGS yrkesfag",
+  "eduVGS allmenn" = "Utdanning: VGS allmenn",
+  "eduFagskole" = "Utdanning: Fagskole",
+  "eduBachelor" = "Utdanning: Bachelor",
+  "eduMaster" = "Utdanning: Master",
+  "ung_gpa" = "Ungdomsskolekarakter",
+  "genderKvinne" = "Kjønn: Kvinne"
+)
+
+# Hent summary
+mfx_tab <- summary(mfx) %>%
+  as.data.frame() %>%
+  mutate(
+    term_label = term_labels[factor],
+    across(c(AME, SE, z, p), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8,
+    term_label == "Intercept" ~ 0
+  )) %>%
+  arrange(order)%>%
+  select(term_label, AME, SE, z, p)
+
+# Lag HTML-tabell
+mfx_tab %>%
+  kable("html",
+        col.names = c("Variabel", "Marginal effekt (AME)", "Std. error", "z-verdi", "p-verdi"),
+        caption = "Marginaleffekter fra logit-modellen") %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+
+```
+
+
+## Sammenligningn LPM og Logit
+
+#### Logit
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+mfx_tab %>%
+  kable("html",
+        col.names = c("Variabel", "Marginal effekt (AME)", "Std. error", "z-verdi", "p-verdi"),
+        caption = "Marginaleffekter fra logit-modellen") %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+```
+#### LPM
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+# Robuste standardfeil (HC1)
+library(sandwich)
+library(lmtest)
+
+lpm_robust <- coeftest(
+  lpm_emp,
+  vcov = vcovHC(lpm_emp, type = "HC1")
+)
+
+
+# Hent ut koeffisienter
+lpm_r_tab <- tidy(lpm_robust)
+
+
+# Lag en mapping fra term → pen etikett
+term_labels <- c(
+  "(Intercept)" = "Intercept",
+  "eduVGS yrkesfag" = "Utdanning: VGS yrkesfag",
+  "eduVGS allmenn" = "Utdanning: VGS allmenn",
+  "eduFagskole" = "Utdanning: Fagskole",
+  "eduBachelor" = "Utdanning: Bachelor",
+  "eduMaster" = "Utdanning: Master",
+  "ung_gpa" = "Ungdomsskolekarakter",
+  "genderKvinne" = "Kjønn: Kvinne"
+)
+
+# Legg på etiketter og sorter
+lpm_r_tab <- lpm_r_tab %>%
+  mutate(
+    term_label = term_labels[term],
+    across(c(estimate, std.error, statistic, p.value), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8,
+    term_label == "Intercept" ~ 0
+  )) %>%
+  arrange(order)%>%
+  select(term_label, 
+         estimate,
+         std.error,
+         statistic,
+         p.value)
+
+# Lag HTML-tabell
+lpm_r_tab %>%
+  select(term_label, estimate, std.error, statistic, p.value) %>%
+  kable("html", 
+        col.names = c("Variabel", "Estimert koeffisient", "Std. error", "t-verdi", "p-verdi"),
+        caption = note_text) %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+```
+
+##
+
+Vi kan sammenligne predikerte sannsynligheter fra de to modellene. Figuren under viser at den linjere modellen overpredikerer lave og høye sannsynligheter
+
+```{r}
+#| echo: false
+
+plot(pred_lpm, pred_logit, xlab="LPM prediksjon", ylab="Logit prediksjon",
+     main="Sammenligning LPM vs Logit")
+abline(0,1, col="red")
+
+```
+
+## Interaksjonseffekter
+
+* I noen tilfeller tenker vi oss at effektene av en forklaringsvariabel varierer mellom ulike grupper. 
+  * For eksempel kanskje vi tenker at kvinner har større utbytte av utdanning enn menn, eller motsatt. 
+* I de modeller vi har estimert tidligere tester vi bare den gjennomsnittlige effekten av utdanning (for alle). 
+  * For å evaluere om utdanningseffekten er forskjellig for ulike grupper må vi inkludere så kalte *interaksjonsvariabler*.
+
+$$
+\ln(Inntekt_i) = \gamma + \delta_1 \cdot UtdNivå_i + \delta_2 \cdot karakter_i + \delta_3 \cdot Kvinne_i + \delta_4 \cdot Kvinne_i \cdot UtdNivå_i
+$$ 
+
+
+
+```{r}
+#| echo: true
+lm_inc_log_int <- lm(log_income ~ edu + ung_gpa + gender + edu*gender , data = data_clean)
+
+```
+
+##
+
+### Resultater fra Logit med interaksjonseffekter
+
+```{r}
+#| code-fold: true
+#| code-summary: "Vis R-kode"
+
+library(broom)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Hent ut koeffisienter
+lm_tab <- tidy(lm_inc_log_int)
+
+
+# Lag en mapping fra term → pen etikett
+term_labels <- c(
+  "(Intercept)" = "Intercept",
+  "eduVGS yrkesfag" = "Utdanning: VGS yrkesfag",
+  "eduVGS allmenn" = "Utdanning: VGS allmenn",
+  "eduFagskole" = "Utdanning: Fagskole",
+  "eduBachelor" = "Utdanning: Bachelor",
+  "eduMaster" = "Utdanning: Master",
+  "ung_gpa" = "Ungdomsskolekarakter",
+  "genderKvinne" = "Kjønn: Kvinne",
+  "eduVGS yrkesfag:genderKvinne" = "VGS yrkesfag x Kvinne",
+  "eduVGS allmenn:genderKvinne" = "VGS allmenn x Kvinne",
+  "eduFagskole:genderKvinne" = "Fagskole x Kvinne",
+  "eduBachelor:genderKvinne" = "Bachelor x Kvinne",
+  "eduMaster:genderKvinne" = "Master x Kvinne"
+)
+
+# Legg på etiketter og sorter
+lm_tab <- lm_tab %>%
+  mutate(
+    term_label = term_labels[term],
+    across(c(estimate, std.error, statistic, p.value), ~round(.,3))
+  ) %>%
+  # Sett ønsket rekkefølge
+  mutate(order = case_when(
+    term_label == "Intercept" ~ 0,
+    term_label == "Utdanning: Grunnskole" ~ 1,
+    term_label == "Utdanning: VGS yrkesfag" ~ 2,
+    term_label == "Utdanning: VGS allmenn" ~ 3,
+    term_label == "Utdanning: Fagskole" ~ 4,
+    term_label == "Utdanning: Bachelor" ~ 5,
+    term_label == "Utdanning: Master" ~ 6,
+    term_label == "Ungdomsskolekarakter" ~ 7,
+    term_label == "Kjønn: Kvinne" ~ 8,
+    term_label == "VGS yrkesfag x Kvinne" ~ 9,
+    term_label == "VGS allmenn x Kvinne" ~ 10,
+    term_label == "Fagskole x Kvinne" ~ 11,
+    term_label == "Bachelor x Kvinne" ~ 12,
+    term_label == "Master x Kvinne" ~ 13,
+  )) %>%
+  arrange(order)%>%
+  select(term_label, 
+         estimate,
+         std.error,
+         statistic,
+         p.value)
+
+# Hent R² og N
+r2_adj <- round(summary(lm_inc_log_int)$adj.r.squared,3)
+n_obs <- nobs(lm_inc_log_int)
+note_text <- paste0("Justert R² = ", r2_adj, ", N = ", n_obs)
+
+# Lag HTML-tabell
+lm_tab %>%
+  select(term_label, estimate, std.error, statistic, p.value) %>%
+  kable("html", 
+        col.names = c("Variabel", "Estimert koeffisient", "Std. error", "t-verdi", "p-verdi"),
+        caption = note_text) %>%
+  kable_styling(full_width = FALSE, position = "left", bootstrap_options = c("striped","hover"))
+
+```  
+
+* Vi ser at effekten av bachelor og masterutdanning er positiv og signifikant større for kvinner enn for menn. 
+* Kvinner med kun grunnskole tjener i gjennomsnitt cirka 22% ($exp(-0.245)-1 \approx -22\%$) mindre enn menn med kun grunnskole.
+* Vi finner ikke at effekten av utdanning på lavere nivå har forskjellig effekt for menn og kvinner. 
+
+
+## Noen siste spørsmål
+
+* **Klarer vi å besvare våre hypoteser ved bruk av den valgte empiriske metoden og våre modellspesifikasjoner?**
+  * Er de avhengige variabler vi bruker gode indikatorer på det vi ønsker å måle, eller måler de egentlig noen annet?
+  * Er de forklaringsvariabler vi har med gode indikatorer på det vi ønsker å måle, eller måler de egentlig noe annet?
+  * Har vi misset noen viktige forklaringsvariabler i modellene for inntekt og sysselsetting? Hva er konsekvensen av dette?
+  * For hvem gjelder resultatene (har vi problemer med seleksjon)?
+  * Klarer vi å finne et årsakssammenheng mellom forklarende variabler og avhengig variabel?
+
+## Ting å ta med seg
+
+1. Det er **svært** lurt å se på data og kode-bok før en setter igang med statistisk analyse. Se på deskriptiv statistikk og lag plotter for å få en forståelse for datamaterialet!
+2. Det er lurt å sjekke at modellen "funker" til data (test av antakelser, men også at vi har tilstrekkelig mange observasjoner i alle kategorier når vi bruker faktor-variabler). 
+3. Det er mulig å estimere linjere sannsynlighetsmodeller ved bruk av OLS, men da må man sjekke at den predikerte sannsynligheten holder seg mellom 0 og 1, og bruke robuste standardfeil. 
+4. Hvis vi tenker at effektene av en forklarende variabel varierer mellom ulike grupper er det lurt å inkludere interaksjonsvariabler. Når vi tolker disse må vi tenke nøye. 
+5. Vi må være nøye når vi tolker resultatene fra modellen og ikke trekke for langtgående konklusjoner (i hvilken grad avhengige og forklarende variabler måler det de skal, problemer med seleksjon, korrelasjon vs årsakssammenhenger og så videre). Vær transparent med begrensninger og utfordringer i analysen!
+
