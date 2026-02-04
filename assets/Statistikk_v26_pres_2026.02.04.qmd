@@ -251,7 +251,7 @@ Vi må nå "operasjonalisere" våre hypoteser, det vil si definere dem ut ifra d
 
 ```{r}
 #| echo: true 
-# Linjere modeller ved bruk av OLS
+# Lineære modeller ved bruk av OLS
 
 #Inntekt
 lm_inc <- lm(income ~ edu + bachelor_gpa +  gender , data = data)
@@ -1206,10 +1206,10 @@ lm_tab %>%
 data_clean$employed_bin <- as.integer(data_clean$employed == "Sysselsatt")
 ```
 
-## Linjer sannsynlighetsmodell (LPM)
+## Lineær sannsynlighetsmodell (LPM)
 
 * Til tross for at utfallsvariabelen er en dummy-variabel (1/0), er det mulig å estimere en OLS. 
-* Modellen er da en linjer sannsynlighetsmodell som estimerer sannsynligheten for å være sysselsatt direkte som en linjer kombinasjon av de forklarende variablene.
+* Modellen er da en lineær sannsynlighetsmodell som estimerer sannsynligheten for å være sysselsatt direkte som en lineær kombinasjon av de forklarende variablene.
 
 ```{r}
 #| echo: true
@@ -1284,17 +1284,17 @@ lm_tab %>%
 
 ## 
 
-### Fordeler med linjere sannsynlighetsmodeller
+### Fordeler med lineære sannsynlighetsmodeller
 
-* En fordel med en linjer sannsynlighetsmodell er at koeffisientene er veldig enkle å tolke. 
+* En fordel med en lineær sannsynlighetsmodell er at koeffisientene er veldig enkle å tolke. 
   * Modellen predikerer at individer som har gått fagskole har 20.5 prosentenheter høyere sannsynlighet å være sysselsatte en individer som kun har gått grunnskole. 
   * Modellen predikerer at kvinner har 15.1 prosentenheter lavere sannsynlighet for å være sysselsatte enn menn.
 
 ##
 
-### Ulemper med linjere sannsynlighetsmodeller
+### Ulemper med lineære sannsynlighetsmodeller
 
-* Et problem med den linjere sannsynlighetsmodellen er at den kan predikere verdier større enn 1, og mindre enn null. Siden modellen estimerer en sannsynlighet gir disse tallene ikke mening. I vår modell ser vi, heldigvis, ikke ut å ha problemer med dette. 
+* Et problem med den lineære sannsynlighetsmodellen er at den kan predikere verdier større enn 1, og mindre enn null. Siden modellen estimerer en sannsynlighet gir disse tallene ikke mening. I vår modell ser vi, heldigvis, ikke ut å ha problemer med dette. 
 ```{r}
 #| code-fold: true
 #| code-summary: "Vis R-kode"
@@ -1386,9 +1386,9 @@ lpm_r_tab %>%
 
 
 
-## Ikke-linjere modeller: Logit (og Probit)
+## Ikke-lineære modeller: Logit (og Probit)
 
-Vi kan også estimere en ikke-linjer modell som tar hensyn til at utfallsvariabelen er binær. To vanlige modeller er "Logit" og "Probit". Vi estimerer en Logit under. 
+Vi kan også estimere en ikke-lineær modell som tar hensyn til at utfallsvariabelen er binær. To vanlige modeller er "Logit" og "Probit". Vi estimerer en Logit under. 
 
 $$
 \Pr(\text{employed} = 1 \mid X) = \frac{1}{1 + \exp\Big(-(\beta_0 + \beta_1 \text{Utdanning} + \beta_2 \text{Ungdomsskolekarakter} + \beta_3 \text{Kjønn})\Big)} 
@@ -1461,7 +1461,7 @@ logit_tab %>%
 
 ## Tolkning av resultatene fra Logit-modeller
 
-* Som følge av at modellen er ikke-linjer går det ikke å tolke estimatene som effekter i termer av prosent-enheter (de er log odds). 
+* Som følge av at modellen er ikke-lineær går det ikke å tolke estimatene som effekter i termer av prosent-enheter (de er log odds). 
 * Vi kan dog vise at modellen predikerer sannsynligheter mellom null og ett.
 
 ```{r}
@@ -1615,7 +1615,7 @@ lpm_r_tab %>%
 
 ##
 
-Vi kan sammenligne predikerte sannsynligheter fra de to modellene. Figuren under viser at den linjere modellen overpredikerer lave og høye sannsynligheter
+Vi kan sammenligne predikerte sannsynligheter fra de to modellene. Figuren under viser at den lineære modellen overpredikerer lave og høye sannsynligheter
 
 ```{r}
 #| echo: false
@@ -1742,7 +1742,7 @@ lm_tab %>%
 
 1. Det er **svært** lurt å se på data og kode-bok før en setter igang med statistisk analyse. Se på deskriptiv statistikk og lag plotter for å få en forståelse for datamaterialet!
 2. Det er lurt å sjekke at modellen "funker" til data (test av antakelser, men også at vi har tilstrekkelig mange observasjoner i alle kategorier når vi bruker faktor-variabler). 
-3. Det er mulig å estimere linjere sannsynlighetsmodeller ved bruk av OLS, men da må man sjekke at den predikerte sannsynligheten holder seg mellom 0 og 1, og bruke robuste standardfeil. 
+3. Det er mulig å estimere lineære sannsynlighetsmodeller ved bruk av OLS, men da må man sjekke at den predikerte sannsynligheten holder seg mellom 0 og 1, og bruke robuste standardfeil. 
 4. Hvis vi tenker at effektene av en forklarende variabel varierer mellom ulike grupper er det lurt å inkludere interaksjonsvariabler. Når vi tolker disse må vi tenke nøye. 
 5. Vi må være nøye når vi tolker resultatene fra modellen og ikke trekke for langtgående konklusjoner (i hvilken grad avhengige og forklarende variabler måler det de skal, problemer med seleksjon, korrelasjon vs årsakssammenhenger og så videre). Vær transparent med begrensninger og utfordringer i analysen!
 
